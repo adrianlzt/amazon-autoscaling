@@ -1,0 +1,3 @@
+AutoScaling: https://github.com/cloudtools/troposphere/blob/master/tests/test_basic.py
+
+https://s3.amazonaws.com/cloudformation-templates-us-east-1/auto_scaling_with_instance_profile.template

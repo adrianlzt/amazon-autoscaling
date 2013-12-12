@@ -1,0 +1,77 @@
+{
+    "Outputs": {
+        "InstanceAccess": {
+            "Description": "Command to use to SSH to instance", 
+            "Value": {
+                "Fn::Join": [
+                    "", 
+                    [
+                        "ssh -i ", 
+                        {
+                            "Ref": "KeyPair"
+                        }, 
+                        " ubuntu@", 
+                        {
+                            "Fn::GetAtt": [
+                                "testCloudFormation", 
+                                "PublicDnsName"
+                            ]
+                        }
+                    ]
+                ]
+            }
+        }
+    }, 
+    "Parameters": {
+        "KeyPair": {
+	    "Description" : "Name of an existing EC2 KeyPair to enable SSH access to the instances",
+	    "Default" : "asTestKey",
+            "Type": "String"
+        }
+    }, 
+    "Resources": {
+        "asTestSshHttp": {
+            "Properties": {
+                "GroupDescription": "testing auto scaling. allow 22 and 80", 
+                "SecurityGroupIngress": [
+                    {
+                        "CidrIp": "0.0.0.0/0", 
+                        "FromPort": 22, 
+                        "IpProtocol": "tcp", 
+                        "ToPort": 22
+                    }, 
+                    {
+                        "CidrIp": "0.0.0.0/0", 
+                        "FromPort": 80, 
+                        "IpProtocol": "tcp", 
+                        "ToPort": 80
+                    }
+                ]
+            }, 
+            "Type": "AWS::EC2::SecurityGroup"
+        }, 
+        "testCloudFormation": {
+            "Properties": {
+                "ImageId": "ami-149f7863", 
+                "InstanceType": "t1.micro", 
+                "KeyName": {
+                    "Ref": "KeyPair"
+                }, 
+                "SecurityGroups": [
+                    {
+                        "Ref": "asTestSshHttp"
+                    }
+                ], 
+		"UserData"       : { "Fn::Base64" : { "Fn::Join" : ["", [
+                "#!/bin/bash\n",
+		"yum update -y\n",  
+		"yum groupinstall -y 'Web Server' 'PHP Support'\n",  
+		"curl https://dl.dropboxusercontent.com/u/5881263/calculate_pi.php -o /var/www/html/calculate_pi.php\n",
+		"service httpd start\n",
+		"chkconfig httpd on\n"
+		]]}}
+            }, 
+            "Type": "AWS::EC2::Instance"
+        }
+    }
+}

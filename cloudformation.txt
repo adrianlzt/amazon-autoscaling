@@ -1,0 +1,63 @@
+Genero un .json con trophosphere
+python tropho.py > template.json
+
+Modifico el user-data para que quede correcto.
+                "UserData"       : { "Fn::Base64" : { "Fn::Join" : ["", [
+                "#!/bin/bash\n",
+                "yum update -y\n",  
+                "yum groupinstall -y 'Web Server' 'PHP Support'\n",  
+                "curl https://dl.dropboxusercontent.com/u/5881263/calculate_pi.php -o /var/www/html/calculate_pi.php\n",
+                "service httpd start\n",
+                "chkconfig httpd on\n"
+                ]]}}
+
+LE FALTA EL INDEX.HTML QUE COMPRUEBA EL LOAD BALANCER PARA SABER SI BALANCEAR
+
+
+Lanzo el stack con el siguiente comando
+aws cloudformation create-stack --stack-name myteststack --template-body file:///home/adrian/Documentos/amazon/autoscaling/template.json
+
+
+Obtengo la ip de la instancia:
+aws ec2 describe-instances
+
+Conecto:
+ssh -i asTestKey.pem ec2-user@176.34.223.182
+
+Miro que el apache está instalando y el php en su sitio.
+
+Paro la instancia:
+aws ec2 stop-instances --instance-ids i-0e9df042
+
+Genero una ami:
+aws ec2 create-image --instance-id i-0e9df042 --name calculopi
+ami-7eb75e09
+SE CREA BIEN LA AMI CON LOS PROGRAMAS Y CONFIGURACIONES QUE TENEMOS?
+
+
+## Auto Scaling ##
+
+Creo load balancer
+aws elb create-load-balancer --load-balancer-name loadTest --listeners "Protocol=tcp,LoadBalancerPort=80,InstanceProtocol=tcp,InstancePort=80" --availability-zones eu-west-1a
+
+Creo launch config
+aws autoscaling create-launch-configuration --launch-configuration-name testLaunchConf --image-id ami-7eb75e09 --key-name asTestKey --security-groups asTestGroup --instance-type t1.micro
+
+Creo autoscaling group (mismas availability zones que el balanceador)
+aws autoscaling create-auto-scaling-group --auto-scaling-group-name testGroupAS --launch-configuration-name testLaunchConf --min-size 1 --max-size 3 --availability-zones eu-west-1a --load-balancer-names loadTest --default-cooldown 60 --termination-policies "ClosestToNextInstanceHour" 
+
+
+Definir las politícas de como se crece y decrece:
+aws autoscaling put-scaling-policy --auto-scaling-group-name testGroupAS --policy-name creceAS --scaling-adjustment 1 --adjustment-type ChangeInCapacity
+arn:aws:autoscaling:eu-west-1:400905189175:scalingPolicy:325e0ed1-db30-4846-b038-824301e34a1f:autoScalingGroupName/testGroupAS:policyName/creceAS
+
+aws autoscaling put-scaling-policy --auto-scaling-group-name testGroupAS --policy-name decreceAS --scaling-adjustment -1 --adjustment-type ChangeInCapacity
+arn:aws:autoscaling:eu-west-1:400905189175:scalingPolicy:7d9c2265-e108-4a97-ba45-e8d7b6f1b05b:autoScalingGroupName/testGroupAS:policyName/decreceAS
+
+
+Defino unas alarmas que llamaran a las políticas de crecimiento y decrecimiento:
+aws cloudwatch put-metric-alarm --alarm-name cpuMayor80 --actions-enabled --alarm-actions arn:aws:autoscaling:eu-west-1:400905189175:scalingPolicy:325e0ed1-db30-4846-b038-824301e34a1f:autoScalingGroupName/testGroupAS:policyName/creceAS --metric-name CPUUtilization --namespace AWS/EC2 --statistic Average --period 60 --unit Seconds --evaluation-periods 2 --threshold 80 --comparison-operator GreaterThanOrEqualToThreshold
+
+aws cloudwatch put-metric-alarm --alarm-name cpuMenor20 --actions-enabled --alarm-actions arn:aws:autoscaling:eu-west-1:400905189175:scalingPolicy:7d9c2265-e108-4a97-ba45-e8d7b6f1b05b:autoScalingGroupName/testGroupAS:policyName/decreceAS --metric-name CPUUtilization --namespace AWS/EC2 --statistic Average --period 60 --unit Seconds --evaluation-periods 2 --threshold 20 --comparison-operator LessThanOrEqualToThreshold
+
+

@@ -1,0 +1,6 @@
+#!/bin/bash
+yum update -y
+yum groupinstall -y "Web Server" "PHP Support"
+curl https://dl.dropboxusercontent.com/u/5881263/calculate_pi.php -o /var/www/html/calculate_pi.php
+service httpd start
+chkconfig httpd on
